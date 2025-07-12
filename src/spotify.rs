@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use rand::Rng;
 use reqwest::Client;
@@ -10,6 +10,17 @@ use tokio::sync::Mutex;
 use tokio::net::TcpListener as AsyncTcpListener;
 use tokio::time::{timeout, Duration};
 use url::Url;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LikedTrackResponse {
+    items: Vec<LikedTrack>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LikedTrack {
+    added_at: String,
+    track: Track,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
@@ -149,7 +160,7 @@ impl SpotifyClient {
 
     pub async fn authenticate(&self) -> Result<()> {
         let redirect_uri = "http://127.0.0.1:8888/callback";
-        let scope = "user-read-private user-read-email playlist-read-private playlist-read-collaborative user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position";
+        let scope = "user-read-private user-read-email playlist-read-private playlist-read-collaborative user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position user-library-read";
 
         let code_verifier = self.generate_code_verifier();
         let code_challenge = self.generate_code_challenge(&code_verifier);
@@ -289,9 +300,17 @@ impl SpotifyClient {
             .get("https://api.spotify.com/v1/me/playlists")
             .bearer_auth(token)
             .send()
-            .await?;
+            .await.context("somehow in get_playlists");
 
-        let playlists: PlaylistsResponse = response.json().await?;
+	let response = response?;
+        let mut playlists: PlaylistsResponse = response.json().await?;
+	let liked_songs = Playlist{
+	    id: "liked".into(),
+	    name: "Liked Songs".into(),
+	    description: None,
+	    tracks: PlaylistTracks { total: 50 },
+	};
+	playlists.items.insert(0, liked_songs);
         Ok(playlists.items)
     }
 
@@ -299,14 +318,24 @@ impl SpotifyClient {
         let access_token = self.access_token.lock().await;
         let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
-            .get(&format!("https://api.spotify.com/v1/playlists/{}/tracks", playlist_id))
-            .bearer_auth(token)
-            .send()
-            .await?;
+	let tracks: Vec<Track> = match playlist_id {
+	    "liked" => {
+		let response = self.client.get("https://api.spotify.com/v1/me/tracks?limit=50").bearer_auth(token).send().await?;
+		let liked_tracks_response: LikedTrackResponse = response.json().await.context("it's fucking here")?;
+		liked_tracks_response.items.into_iter().map(|item| item.track).collect()
+	    },
+	    _ => {
+		let response = self.client
+		    .get(&format!("https://api.spotify.com/v1/playlists/{}/tracks", playlist_id))
+		    .bearer_auth(token)
+		    .send()
+		    .await?;
+		let tracks_response: PlaylistTracksResponse = response.json().await.context("here")?;
+		tracks_response.items.into_iter().map(|item| item.track).collect()
+	    }
+	};
 
-        let tracks_response: PlaylistTracksResponse = response.json().await?;
-        Ok(tracks_response.items.into_iter().map(|item| item.track).collect())
+        Ok(tracks)
     }
 
     pub async fn search_tracks(&self, query: &str) -> Result<Vec<Track>> {
