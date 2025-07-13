@@ -92,6 +92,7 @@ impl App {
         self.load_playlists().await?;
 
         let mut last_update = std::time::Instant::now();
+        let mut last_refreshed = std::time::Instant::now();
 
         loop {
             terminal.draw(|f| ui::draw(f, self))?;
@@ -105,6 +106,12 @@ impl App {
                 self.update_currently_playing().await;
                 self.update_queue().await;
                 last_update = std::time::Instant::now();
+            }
+
+            // Update the refresh token every 10 mins
+            if last_refreshed.elapsed() >= Duration::from_secs(600) {
+                self.refresh_access_token().await?;
+                last_refreshed = std::time::Instant::now();
             }
 
             // Check for pending search
@@ -123,6 +130,19 @@ impl App {
     async fn authenticate(&mut self) -> Result<()> {
         self.state = AppState::Authenticating;
         match self.spotify_client.authenticate().await {
+            Ok(_) => {
+                self.state = AppState::Ready;
+                Ok(())
+            }
+            Err(e) => {
+                self.state = AppState::Error(format!("Authentication failed: {}", e));
+                Err(e)
+            }
+        }
+    }
+
+    async fn refresh_access_token(&mut self) -> Result<()> {
+        match self.spotify_client.refresh_access_token().await {
             Ok(_) => {
                 self.state = AppState::Ready;
                 Ok(())

@@ -143,9 +143,17 @@ struct QueueResponse {
     queue: Vec<Track>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TokenRefreshResponse {
+    access_token: String,
+    #[serde(default)]
+    refresh_token: Option<String>,
+}
+
 pub struct SpotifyClient {
     client: Client,
     access_token: Arc<Mutex<Option<String>>>,
+    refresh_token: Arc<Mutex<Option<String>>>,
     client_id: String,
 }
 
@@ -154,8 +162,48 @@ impl SpotifyClient {
         Self {
             client: Client::new(),
             access_token: Arc::new(Mutex::new(None)),
+            refresh_token: Arc::new(Mutex::new(None)),
             client_id,
         }
+    }
+
+    pub async fn refresh_access_token(&self) -> Result<()> {
+        let mut refresh_token = self.refresh_token.lock().await;
+        let refresh_token_value = refresh_token.clone().unwrap();
+
+        let params = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token_value.as_str()),
+            ("client_id", self.client_id.as_str()),
+        ];
+
+        let response = self
+            .client
+            .post("https://accounts.spotify.com/api/token")
+            .form(&params)
+            .send()
+            .await
+            .context("Failed to send token refresh request")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Token refresh failed with status {}: {}",
+                status,
+                error_text
+            ));
+        }
+
+        let token_response: TokenRefreshResponse = response
+            .json()
+            .await
+            .context("Failed to deserialize token response")?;
+
+        let mut access_token = self.access_token.lock().await;
+        *access_token = Some(token_response.access_token);
+        *refresh_token = token_response.refresh_token;
+        Ok(())
     }
 
     pub async fn authenticate(&self) -> Result<()> {
@@ -189,6 +237,9 @@ impl SpotifyClient {
 
         let mut access_token = self.access_token.lock().await;
         *access_token = Some(token.access_token);
+
+        let mut refresh_token = self.refresh_token.lock().await;
+        *refresh_token = token.refresh_token;
 
         Ok(())
     }
