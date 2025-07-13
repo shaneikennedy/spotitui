@@ -8,7 +8,6 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio;
 
 mod app;
 mod spotify;

@@ -478,14 +478,15 @@ impl App {
             }
         }
 
-        if self.show_search && matches!(self.focused_pane, FocusedPane::Tracks) {
-            if key.code == KeyCode::Enter {
-                if let Some(selected) = self.search_state.selected() {
-                    if selected < self.search_results.len() {
-                        let track = &self.search_results[selected];
-                        if let Err(e) = self.spotify_client.play_track(&track.uri).await {
-                            self.state = AppState::Error(e.to_string());
-                        }
+        if self.show_search
+            && matches!(self.focused_pane, FocusedPane::Tracks)
+            && key.code == KeyCode::Enter
+        {
+            if let Some(selected) = self.search_state.selected() {
+                if selected < self.search_results.len() {
+                    let track = &self.search_results[selected];
+                    if let Err(e) = self.spotify_client.play_track(&track.uri).await {
+                        self.state = AppState::Error(e.to_string());
                     }
                 }
             }
@@ -573,15 +574,11 @@ impl App {
                                     if let Err(e) = self.spotify_client.pause_playback().await {
                                         self.state = AppState::Error(e.to_string());
                                     }
-                                } else {
-                                    if let Err(e) = self.spotify_client.resume_playback().await {
-                                        self.state = AppState::Error(e.to_string());
-                                    }
-                                }
-                            } else {
-                                if let Err(e) = self.spotify_client.resume_playback().await {
+                                } else if let Err(e) = self.spotify_client.resume_playback().await {
                                     self.state = AppState::Error(e.to_string());
                                 }
+                            } else if let Err(e) = self.spotify_client.resume_playback().await {
+                                self.state = AppState::Error(e.to_string());
                             }
                         }
                         1 => {

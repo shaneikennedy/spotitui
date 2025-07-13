@@ -400,7 +400,7 @@ impl SpotifyClient {
             _ => {
                 let response = self
                     .client
-                    .get(&format!(
+                    .get(format!(
                         "https://api.spotify.com/v1/playlists/{}/tracks",
                         playlist_id
                     ))
@@ -681,11 +681,11 @@ impl SpotifyClient {
     }
 
     fn generate_code_verifier(&self) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let code_verifier: String = (0..128)
             .map(|_| {
                 let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-                chars[rng.gen_range(0..chars.len())] as char
+                chars[rng.random_range(0..chars.len())] as char
             })
             .collect();
         code_verifier
@@ -699,9 +699,9 @@ impl SpotifyClient {
     }
 
     fn generate_state(&self) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         (0..16)
-            .map(|_| rng.gen_range(0..16))
+            .map(|_| rng.random_range(0..16))
             .map(|n| format!("{:x}", n))
             .collect()
     }
