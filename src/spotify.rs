@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::net::TcpListener as AsyncTcpListener;
+use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
 use url::Url;
 
@@ -65,7 +65,6 @@ pub struct PlaylistTracks {
     pub total: u32,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenResponse {
     access_token: String,
@@ -89,7 +88,6 @@ struct PlaylistTracksResponse {
 struct PlaylistTrackItem {
     track: Track,
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SearchResponse {
@@ -229,11 +227,15 @@ impl SpotifyClient {
             Ok(code) => code,
             Err(_) => {
                 // Fallback to manual entry - this will be handled by the UI layer
-                return Err(anyhow!("Authentication callback failed - manual entry required"));
+                return Err(anyhow!(
+                    "Authentication callback failed - manual entry required"
+                ));
             }
         };
 
-        let token = self.exchange_code_for_token(&auth_code, &code_verifier, redirect_uri).await?;
+        let token = self
+            .exchange_code_for_token(&auth_code, &code_verifier, redirect_uri)
+            .await?;
 
         let mut access_token = self.access_token.lock().await;
         *access_token = Some(token.access_token);
@@ -272,19 +274,18 @@ impl SpotifyClient {
                             // Try again with a blocking read
                             let mut buffer = vec![0; 2048];
                             match stream.readable().await {
-                                Ok(_) => {
-                                    match stream.try_read(&mut buffer) {
-                                        Ok(n) => {
-                                            let request = String::from_utf8_lossy(&buffer[..n]);
+                                Ok(_) => match stream.try_read(&mut buffer) {
+                                    Ok(n) => {
+                                        let request = String::from_utf8_lossy(&buffer[..n]);
 
-                                            if let Some(code) = self.extract_code_from_request(&request) {
-                                                self.send_async_response(&mut stream).await?;
-                                                return Ok(code);
-                                            }
+                                        if let Some(code) = self.extract_code_from_request(&request)
+                                        {
+                                            self.send_async_response(&mut stream).await?;
+                                            return Ok(code);
                                         }
-                                        Err(_) => continue,
                                     }
-                                }
+                                    Err(_) => continue,
+                                },
                                 Err(_) => continue,
                             }
                         }
@@ -318,14 +319,18 @@ impl SpotifyClient {
         None
     }
 
-
     async fn send_async_response(&self, stream: &mut tokio::net::TcpStream) -> Result<()> {
         let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><body><h1>Authentication successful!</h1><p>You can close this window and return to the terminal.</p></body></html>";
         stream.try_write(response.as_bytes())?;
         Ok(())
     }
 
-    async fn exchange_code_for_token(&self, code: &str, code_verifier: &str, redirect_uri: &str) -> Result<TokenResponse> {
+    async fn exchange_code_for_token(
+        &self,
+        code: &str,
+        code_verifier: &str,
+        redirect_uri: &str,
+    ) -> Result<TokenResponse> {
         let mut params = HashMap::new();
         params.insert("grant_type", "authorization_code");
         params.insert("code", code);
@@ -333,7 +338,8 @@ impl SpotifyClient {
         params.insert("client_id", &self.client_id);
         params.insert("code_verifier", code_verifier);
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://accounts.spotify.com/api/token")
             .form(&params)
             .send()
@@ -345,55 +351,83 @@ impl SpotifyClient {
 
     pub async fn get_playlists(&self) -> Result<Vec<Playlist>> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.spotify.com/v1/me/playlists")
             .bearer_auth(token)
             .send()
-            .await.context("somehow in get_playlists");
+            .await
+            .context("somehow in get_playlists");
 
-	let response = response?;
+        let response = response?;
         let mut playlists: PlaylistsResponse = response.json().await?;
-	let liked_songs = Playlist{
-	    id: "liked".into(),
-	    name: "Liked Songs".into(),
-	    description: None,
-	    tracks: PlaylistTracks { total: 50 },
-	};
-	playlists.items.insert(0, liked_songs);
+        let liked_songs = Playlist {
+            id: "liked".into(),
+            name: "Liked Songs".into(),
+            description: None,
+            tracks: PlaylistTracks { total: 50 },
+        };
+        playlists.items.insert(0, liked_songs);
         Ok(playlists.items)
     }
 
     pub async fn get_playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-	let tracks: Vec<Track> = match playlist_id {
-	    "liked" => {
-		let response = self.client.get("https://api.spotify.com/v1/me/tracks?limit=50").bearer_auth(token).send().await?;
-		let liked_tracks_response: LikedTrackResponse = response.json().await.context("it's fucking here")?;
-		liked_tracks_response.items.into_iter().map(|item| item.track).collect()
-	    },
-	    _ => {
-		let response = self.client
-		    .get(&format!("https://api.spotify.com/v1/playlists/{}/tracks", playlist_id))
-		    .bearer_auth(token)
-		    .send()
-		    .await?;
-		let tracks_response: PlaylistTracksResponse = response.json().await.context("here")?;
-		tracks_response.items.into_iter().map(|item| item.track).collect()
-	    }
-	};
+        let tracks: Vec<Track> = match playlist_id {
+            "liked" => {
+                let response = self
+                    .client
+                    .get("https://api.spotify.com/v1/me/tracks?limit=50")
+                    .bearer_auth(token)
+                    .send()
+                    .await?;
+                let liked_tracks_response: LikedTrackResponse =
+                    response.json().await.context("it's fucking here")?;
+                liked_tracks_response
+                    .items
+                    .into_iter()
+                    .map(|item| item.track)
+                    .collect()
+            }
+            _ => {
+                let response = self
+                    .client
+                    .get(&format!(
+                        "https://api.spotify.com/v1/playlists/{}/tracks",
+                        playlist_id
+                    ))
+                    .bearer_auth(token)
+                    .send()
+                    .await?;
+                let tracks_response: PlaylistTracksResponse =
+                    response.json().await.context("here")?;
+                tracks_response
+                    .items
+                    .into_iter()
+                    .map(|item| item.track)
+                    .collect()
+            }
+        };
 
         Ok(tracks)
     }
 
     pub async fn search_tracks(&self, query: &str) -> Result<Vec<Track>> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.spotify.com/v1/search")
             .query(&[("q", query), ("type", "track"), ("limit", "50")])
             .bearer_auth(token)
@@ -406,7 +440,9 @@ impl SpotifyClient {
 
     pub async fn play_track(&self, track_uri: &str) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
         // First, check if there are any available devices
         let devices = self.get_available_devices(token).await?;
@@ -417,7 +453,8 @@ impl SpotifyClient {
         let mut body = HashMap::new();
         body.insert("uris", vec![track_uri]);
 
-        let response = self.client
+        let response = self
+            .client
             .put("https://api.spotify.com/v1/me/player/play")
             .bearer_auth(token)
             .json(&body)
@@ -437,7 +474,8 @@ impl SpotifyClient {
     }
 
     async fn get_available_devices(&self, token: &str) -> Result<Vec<Device>> {
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.spotify.com/v1/me/player/devices")
             .bearer_auth(token)
             .send()
@@ -453,9 +491,12 @@ impl SpotifyClient {
 
     pub async fn get_currently_playing(&self) -> Result<Option<CurrentlyPlaying>> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.spotify.com/v1/me/player/currently-playing")
             .bearer_auth(token)
             .send()
@@ -467,7 +508,8 @@ impl SpotifyClient {
                 // No content means nothing is currently playing
                 Ok(None)
             } else {
-                let currently_playing_response: CurrentlyPlayingResponse = serde_json::from_str(&response_text)?;
+                let currently_playing_response: CurrentlyPlayingResponse =
+                    serde_json::from_str(&response_text)?;
                 Ok(Some(CurrentlyPlaying {
                     item: currently_playing_response.item,
                     is_playing: currently_playing_response.is_playing,
@@ -485,9 +527,12 @@ impl SpotifyClient {
 
     pub async fn get_queue(&self) -> Result<Option<Queue>> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .get("https://api.spotify.com/v1/me/player/queue")
             .bearer_auth(token)
             .send()
@@ -506,9 +551,12 @@ impl SpotifyClient {
 
     pub async fn add_to_queue(&self, track_uri: &str) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.spotify.com/v1/me/player/queue")
             .bearer_auth(token)
             .query(&[("uri", track_uri)])
@@ -530,9 +578,12 @@ impl SpotifyClient {
 
     pub async fn pause_playback(&self) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .put("https://api.spotify.com/v1/me/player/pause")
             .bearer_auth(token)
             .header("Content-Length", "0")
@@ -553,9 +604,12 @@ impl SpotifyClient {
 
     pub async fn resume_playback(&self) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .put("https://api.spotify.com/v1/me/player/play")
             .bearer_auth(token)
             .header("Content-Length", "0")
@@ -576,9 +630,12 @@ impl SpotifyClient {
 
     pub async fn next_track(&self) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.spotify.com/v1/me/player/next")
             .bearer_auth(token)
             .header("Content-Length", "0")
@@ -599,9 +656,12 @@ impl SpotifyClient {
 
     pub async fn previous_track(&self) -> Result<()> {
         let access_token = self.access_token.lock().await;
-        let token = access_token.as_ref().ok_or_else(|| anyhow!("Not authenticated"))?;
+        let token = access_token
+            .as_ref()
+            .ok_or_else(|| anyhow!("Not authenticated"))?;
 
-        let response = self.client
+        let response = self
+            .client
             .post("https://api.spotify.com/v1/me/player/previous")
             .bearer_auth(token)
             .header("Content-Length", "0")
@@ -619,7 +679,6 @@ impl SpotifyClient {
             }
         }
     }
-
 
     fn generate_code_verifier(&self) -> String {
         let mut rng = rand::thread_rng();

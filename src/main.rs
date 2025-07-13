@@ -4,10 +4,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -24,11 +21,7 @@ static TERMINAL_INITIALIZED: AtomicBool = AtomicBool::new(false);
 fn restore_terminal() {
     if TERMINAL_INITIALIZED.load(Ordering::SeqCst) {
         let _ = disable_raw_mode();
-        let _ = execute!(
-            io::stdout(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        );
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
         TERMINAL_INITIALIZED.store(false, Ordering::SeqCst);
     }
 }
@@ -43,7 +36,8 @@ async fn main() -> Result<()> {
         restore_terminal();
         r.store(false, Ordering::SeqCst);
         std::process::exit(0);
-    }).expect("Error setting Ctrl-C handler");
+    })
+    .expect("Error setting Ctrl-C handler");
 
     // Set up panic hook
     std::panic::set_hook(Box::new(|panic_info| {

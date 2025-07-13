@@ -1,11 +1,6 @@
 use anyhow::Result;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-};
-use ratatui::{
-    Terminal,
-    widgets::ListState,
-};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use ratatui::{widgets::ListState, Terminal};
 use std::time::Duration;
 
 use crate::spotify::{CurrentlyPlaying, Playlist, Queue, SpotifyClient, Track};
@@ -87,7 +82,10 @@ impl App {
         Ok(app)
     }
 
-    pub async fn run(&mut self, terminal: &mut Terminal<impl ratatui::backend::Backend>) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        terminal: &mut Terminal<impl ratatui::backend::Backend>,
+    ) -> Result<()> {
         self.authenticate().await?;
         self.load_playlists().await?;
 
@@ -212,7 +210,9 @@ impl App {
                 }
                 KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     // Ctrl+P - Previous (same as Up)
-                    if matches!(self.focused_pane, FocusedPane::Tracks) && !self.search_results.is_empty() {
+                    if matches!(self.focused_pane, FocusedPane::Tracks)
+                        && !self.search_results.is_empty()
+                    {
                         let selected = self.search_state.selected().unwrap_or(0);
                         if selected > 0 {
                             self.search_state.select(Some(selected - 1));
@@ -221,7 +221,9 @@ impl App {
                 }
                 KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     // Ctrl+N - Next (same as Down)
-                    if matches!(self.focused_pane, FocusedPane::Tracks) && !self.search_results.is_empty() {
+                    if matches!(self.focused_pane, FocusedPane::Tracks)
+                        && !self.search_results.is_empty()
+                    {
                         let selected = self.search_state.selected().unwrap_or(0);
                         if selected < self.search_results.len() - 1 {
                             self.search_state.select(Some(selected + 1));
@@ -256,7 +258,9 @@ impl App {
                     }
                 }
                 KeyCode::Up => {
-                    if matches!(self.focused_pane, FocusedPane::Tracks) && !self.search_results.is_empty() {
+                    if matches!(self.focused_pane, FocusedPane::Tracks)
+                        && !self.search_results.is_empty()
+                    {
                         let selected = self.search_state.selected().unwrap_or(0);
                         if selected > 0 {
                             self.search_state.select(Some(selected - 1));
@@ -264,7 +268,9 @@ impl App {
                     }
                 }
                 KeyCode::Down => {
-                    if matches!(self.focused_pane, FocusedPane::Tracks) && !self.search_results.is_empty() {
+                    if matches!(self.focused_pane, FocusedPane::Tracks)
+                        && !self.search_results.is_empty()
+                    {
                         let selected = self.search_state.selected().unwrap_or(0);
                         if selected < self.search_results.len() - 1 {
                             self.search_state.select(Some(selected + 1));
@@ -356,7 +362,13 @@ impl App {
                 KeyCode::Tab => {
                     self.focused_pane = match self.focused_pane {
                         FocusedPane::Playlists => FocusedPane::Tracks,
-                        FocusedPane::Tracks => if self.show_search { FocusedPane::SearchInput } else { FocusedPane::Playlists },
+                        FocusedPane::Tracks => {
+                            if self.show_search {
+                                FocusedPane::SearchInput
+                            } else {
+                                FocusedPane::Playlists
+                            }
+                        }
                         FocusedPane::SearchInput => FocusedPane::Playlists,
                     };
                 }
@@ -427,7 +439,9 @@ impl App {
                                 if let Some(selected) = self.search_state.selected() {
                                     if selected < self.search_results.len() {
                                         let track = &self.search_results[selected];
-                                        if let Err(e) = self.spotify_client.play_track(&track.uri).await {
+                                        if let Err(e) =
+                                            self.spotify_client.play_track(&track.uri).await
+                                        {
                                             self.state = AppState::Error(e.to_string());
                                         }
                                     }
@@ -435,7 +449,8 @@ impl App {
                             } else if let Some(selected) = self.tracks_state.selected() {
                                 if selected < self.current_tracks.len() {
                                     let track = &self.current_tracks[selected];
-                                    if let Err(e) = self.spotify_client.play_track(&track.uri).await {
+                                    if let Err(e) = self.spotify_client.play_track(&track.uri).await
+                                    {
                                         self.state = AppState::Error(e.to_string());
                                     }
                                 }
@@ -504,7 +519,8 @@ impl App {
             if last_search_time.elapsed() >= Duration::from_millis(self.search_debounce_ms) {
                 self.last_search_time = None;
                 if !self.search_input.is_empty() {
-                    if let Ok(results) = self.spotify_client.search_tracks(&self.search_input).await {
+                    if let Ok(results) = self.spotify_client.search_tracks(&self.search_input).await
+                    {
                         self.search_results = results;
                         // Don't auto-select first result, let user navigate first
                         self.search_state.select(None);
@@ -513,7 +529,6 @@ impl App {
             }
         }
     }
-
 
     async fn handle_playback_controls_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -528,7 +543,8 @@ impl App {
             }
             KeyCode::Down => {
                 let selected = self.playback_controls_state.selected().unwrap_or(0);
-                if selected < 3 { // 0: Play/Pause, 1: Previous, 2: Next, 3: Close
+                if selected < 3 {
+                    // 0: Play/Pause, 1: Previous, 2: Next, 3: Close
                     self.playback_controls_state.select(Some(selected + 1));
                 }
             }
@@ -542,7 +558,8 @@ impl App {
             KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // Ctrl+N - Next (same as Down)
                 let selected = self.playback_controls_state.selected().unwrap_or(0);
-                if selected < 3 { // 0: Play/Pause, 1: Previous, 2: Next, 3: Close
+                if selected < 3 {
+                    // 0: Play/Pause, 1: Previous, 2: Next, 3: Close
                     self.playback_controls_state.select(Some(selected + 1));
                 }
             }

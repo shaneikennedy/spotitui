@@ -26,7 +26,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // Split the left side into playlists (top), currently playing (middle), and queue (bottom)
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(25), Constraint::Percentage(25)].as_ref())
+        .constraints(
+            [
+                Constraint::Percentage(50),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+            ]
+            .as_ref(),
+        )
         .split(main_chunks[0]);
 
     draw_playlists(f, app, left_chunks[0]);
@@ -67,7 +74,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_playlists(f: &mut Frame, app: &mut App, area: Rect) {
-    let items: Vec<ListItem> = app.playlists
+    let items: Vec<ListItem> = app
+        .playlists
         .iter()
         .map(|playlist| {
             let content = vec![Line::from(Span::raw(&playlist.name))];
@@ -97,9 +105,22 @@ fn draw_playlists(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_currently_playing(f: &mut Frame, app: &App, area: Rect) {
     let content = if let Some(ref currently_playing) = app.currently_playing {
         if let Some(ref track) = currently_playing.item {
-            let artists = track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
-            let device_name = currently_playing.device.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "Unknown Device".to_string());
-            let status = if currently_playing.is_playing { "▶" } else { "⏸" };
+            let artists = track
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let device_name = currently_playing
+                .device
+                .as_ref()
+                .map(|d| d.name.clone())
+                .unwrap_or_else(|| "Unknown Device".to_string());
+            let status = if currently_playing.is_playing {
+                "▶"
+            } else {
+                "⏸"
+            };
 
             let progress = if let Some(progress_ms) = currently_playing.progress_ms {
                 let progress_sec = progress_ms / 1000;
@@ -108,14 +129,24 @@ fn draw_currently_playing(f: &mut Frame, app: &App, area: Rect) {
                 let duration_sec = track.duration_ms / 1000;
                 let duration_min = duration_sec / 60;
                 let duration_sec = duration_sec % 60;
-                format!(" {}:{:02} / {}:{:02}", progress_min, progress_sec, duration_min, duration_sec)
+                format!(
+                    " {}:{:02} / {}:{:02}",
+                    progress_min, progress_sec, duration_min, duration_sec
+                )
             } else {
                 String::new()
             };
 
             vec![
                 Line::from(vec![
-                    Span::styled(status, Style::default().fg(if currently_playing.is_playing { Color::Green } else { Color::Yellow })),
+                    Span::styled(
+                        status,
+                        Style::default().fg(if currently_playing.is_playing {
+                            Color::Green
+                        } else {
+                            Color::Yellow
+                        }),
+                    ),
                     Span::raw(" "),
                     Span::styled(&track.name, Style::default().fg(Color::White)),
                 ]),
@@ -165,21 +196,37 @@ fn draw_queue(f: &mut Frame, app: &App, area: Rect) {
         }
 
         if actual_queue.is_empty() {
-            vec![ListItem::new(vec![Line::from(Span::styled("Queue is empty", Style::default().fg(Color::DarkGray)))])]
+            vec![ListItem::new(vec![Line::from(Span::styled(
+                "Queue is empty",
+                Style::default().fg(Color::DarkGray),
+            ))])]
         } else {
-            actual_queue.iter().take(10).enumerate().map(|(i, track)| {
-                let artists = track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
-                let content = vec![Line::from(vec![
-                    Span::styled(format!("{}. ", i + 1), Style::default().fg(Color::DarkGray)),
-                    Span::styled(&track.name, Style::default().fg(Color::White)),
-                    Span::raw(" - "),
-                    Span::styled(artists, Style::default().fg(Color::Gray)),
-                ])];
-                ListItem::new(content)
-            }).collect()
+            actual_queue
+                .iter()
+                .take(10)
+                .enumerate()
+                .map(|(i, track)| {
+                    let artists = track
+                        .artists
+                        .iter()
+                        .map(|a| a.name.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let content = vec![Line::from(vec![
+                        Span::styled(format!("{}. ", i + 1), Style::default().fg(Color::DarkGray)),
+                        Span::styled(&track.name, Style::default().fg(Color::White)),
+                        Span::raw(" - "),
+                        Span::styled(artists, Style::default().fg(Color::Gray)),
+                    ])];
+                    ListItem::new(content)
+                })
+                .collect()
         }
     } else {
-        vec![ListItem::new(vec![Line::from(Span::styled("No queue data available", Style::default().fg(Color::DarkGray)))])]
+        vec![ListItem::new(vec![Line::from(Span::styled(
+            "No queue data available",
+            Style::default().fg(Color::DarkGray),
+        ))])]
     };
 
     let queue_count = if let Some(ref queue) = app.queue {
@@ -214,13 +261,12 @@ fn draw_queue(f: &mut Frame, app: &App, area: Rect) {
         "Queue".to_string()
     };
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(queue_count)
-                .border_style(Style::default()),
-        );
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(queue_count)
+            .border_style(Style::default()),
+    );
 
     f.render_widget(list, area);
 }
@@ -230,7 +276,12 @@ fn draw_tracks(f: &mut Frame, app: &mut App, area: Rect) {
     let items: Vec<ListItem> = tracks
         .iter()
         .map(|track| {
-            let artists = track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", ");
+            let artists = track
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
             let content = vec![Line::from(vec![
                 Span::styled(&track.name, Style::default().fg(Color::White)),
                 Span::raw(" - "),
@@ -286,16 +337,18 @@ fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let input = Paragraph::new(app.search_input.as_str())
         .style(Style::default().fg(Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title("Search").border_style(border_style));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Search")
+                .border_style(border_style),
+        );
 
     f.render_widget(input, area);
 
     // Only show cursor when search input is focused
     if matches!(app.focused_pane, FocusedPane::SearchInput) {
-        f.set_cursor(
-            area.x + app.search_input.len() as u16 + 1,
-            area.y + 1,
-        );
+        f.set_cursor(area.x + app.search_input.len() as u16 + 1, area.y + 1);
     }
 }
 
@@ -340,9 +393,12 @@ fn draw_help_popup(f: &mut Frame, _app: &App) {
     f.render_widget(Clear, popup_area);
 
     let help_text = vec![
-        Line::from(vec![
-            Span::styled("Navigation", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Navigation",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
         Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Green)),
@@ -357,9 +413,12 @@ fn draw_help_popup(f: &mut Frame, _app: &App) {
             Span::raw("         Play track or load playlist"),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Features", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Features",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
         Line::from(vec![
             Span::styled("s", Style::default().fg(Color::Green)),
@@ -382,17 +441,21 @@ fn draw_help_popup(f: &mut Frame, _app: &App) {
             Span::raw("             Show this help"),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Playback Controls", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Playback Controls",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
         Line::from("Press Space to open playback controls popup with:"),
         Line::from("  • Play/Pause current track"),
         Line::from("  • Skip to previous/next track"),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Press Esc or ? to close this help", Style::default().fg(Color::Cyan)),
-        ]),
+        Line::from(vec![Span::styled(
+            "Press Esc or ? to close this help",
+            Style::default().fg(Color::Cyan),
+        )]),
     ];
 
     let paragraph = Paragraph::new(help_text)
@@ -408,21 +471,19 @@ fn draw_help_popup(f: &mut Frame, _app: &App) {
 }
 
 fn draw_help_hint(f: &mut Frame, area: Rect) {
-    let help_text = vec![
-        Line::from(vec![
-            Span::raw("Press "),
-            Span::styled("?", Style::default().fg(Color::Yellow)),
-            Span::raw(" for help  |  "),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" to switch panes  |  "),
-            Span::styled("q", Style::default().fg(Color::Red)),
-            Span::raw(" to quit  |  "),
-            Span::styled("Space", Style::default().fg(Color::Green)),
-            Span::raw(" for controls  |  "),
-            Span::styled("s", Style::default().fg(Color::LightBlue)),
-            Span::raw(" for search"),
-        ]),
-    ];
+    let help_text = vec![Line::from(vec![
+        Span::raw("Press "),
+        Span::styled("?", Style::default().fg(Color::Yellow)),
+        Span::raw(" for help  |  "),
+        Span::styled("Tab", Style::default().fg(Color::Cyan)),
+        Span::raw(" to switch panes  |  "),
+        Span::styled("q", Style::default().fg(Color::Red)),
+        Span::raw(" to quit  |  "),
+        Span::styled("Space", Style::default().fg(Color::Green)),
+        Span::raw(" for controls  |  "),
+        Span::styled("s", Style::default().fg(Color::LightBlue)),
+        Span::raw(" for search"),
+    ])];
 
     let paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::DarkGray))
@@ -431,7 +492,6 @@ fn draw_help_hint(f: &mut Frame, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-
 fn draw_error_popup(f: &mut Frame, error: &str) {
     let popup_area = centered_rect(60, 5, f.size());
 
@@ -439,7 +499,11 @@ fn draw_error_popup(f: &mut Frame, error: &str) {
 
     let error_text = Paragraph::new(error)
         .style(Style::default().fg(Color::Red))
-        .block(Block::default().borders(Borders::ALL).title("Error - Press any key to continue"));
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Error - Press any key to continue"),
+        );
 
     f.render_widget(error_text, popup_area);
 }
