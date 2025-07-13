@@ -1,5 +1,5 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
@@ -13,7 +13,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(1)].as_ref())
-        .split(f.size());
+        .split(f.area());
 
     let content_area = main_layout[0];
     let help_area = main_layout[1];
@@ -348,12 +348,13 @@ fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
 
     // Only show cursor when search input is focused
     if matches!(app.focused_pane, FocusedPane::SearchInput) {
-        f.set_cursor(area.x + app.search_input.len() as u16 + 1, area.y + 1);
+        let position = Position::new(area.x + app.search_input.len() as u16 + 1, area.y + 1);
+        f.set_cursor_position(position);
     }
 }
 
 fn draw_playback_controls_popup(f: &mut Frame, app: &mut App) {
-    let popup_area = centered_rect(40, 8, f.size());
+    let popup_area = centered_rect(40, 8, f.area());
 
     f.render_widget(Clear, popup_area);
 
@@ -388,7 +389,7 @@ fn draw_playback_controls_popup(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_help_popup(f: &mut Frame, _app: &App) {
-    let popup_area = centered_rect(80, 22, f.size());
+    let popup_area = centered_rect(80, 22, f.area());
 
     f.render_widget(Clear, popup_area);
 
@@ -493,7 +494,7 @@ fn draw_help_hint(f: &mut Frame, area: Rect) {
 }
 
 fn draw_error_popup(f: &mut Frame, error: &str) {
-    let popup_area = centered_rect(60, 5, f.size());
+    let popup_area = centered_rect(60, 5, f.area());
 
     f.render_widget(Clear, popup_area);
 
@@ -509,7 +510,7 @@ fn draw_error_popup(f: &mut Frame, error: &str) {
 }
 
 fn draw_status_popup(f: &mut Frame, status: &str) {
-    let popup_area = centered_rect(40, 3, f.size());
+    let popup_area = centered_rect(40, 3, f.area());
 
     f.render_widget(Clear, popup_area);
 
