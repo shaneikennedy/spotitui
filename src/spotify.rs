@@ -5,6 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
 use tokio::net::TcpListener as AsyncTcpListener;
 use tokio::sync::Mutex;
@@ -205,7 +206,9 @@ impl SpotifyClient {
     }
 
     pub async fn authenticate(&self) -> Result<()> {
-        let redirect_uri = "http://127.0.0.1:8888/callback";
+	let port = env::var("PORT").unwrap_or_else(|_| 8888.to_string());
+	let redirect_host = format!("127.0.0.1:{}", port);
+        let redirect_uri = format!("http://{}/callback", redirect_host);
         let scope = "user-read-private user-read-email playlist-read-private playlist-read-collaborative user-modify-playback-state user-read-playback-state user-read-currently-playing user-read-playback-position user-library-read";
 
         let code_verifier = self.generate_code_verifier();
@@ -215,7 +218,7 @@ impl SpotifyClient {
         let auth_url = format!(
             "https://accounts.spotify.com/authorize?client_id={}&response_type=code&redirect_uri={}&code_challenge_method=S256&code_challenge={}&state={}&scope={}",
             self.client_id,
-            urlencoding::encode(redirect_uri),
+            urlencoding::encode(redirect_uri.as_str()),
             code_challenge,
             state,
             urlencoding::encode(scope)
@@ -223,18 +226,18 @@ impl SpotifyClient {
 
         webbrowser::open(&auth_url)?;
 
-        let auth_code = match self.start_callback_server_with_timeout().await {
+        let auth_code = match self.start_callback_server_with_timeout(redirect_host.clone()).await {
             Ok(code) => code,
-            Err(_) => {
+            Err(e) => {
                 // Fallback to manual entry - this will be handled by the UI layer
                 return Err(anyhow!(
-                    "Authentication callback failed - manual entry required"
+                    "Authentication callback failed - manual entry required: {e}"
                 ));
             }
         };
 
         let token = self
-            .exchange_code_for_token(&auth_code, &code_verifier, redirect_uri)
+            .exchange_code_for_token(&auth_code, &code_verifier, redirect_uri.as_str())
             .await?;
 
         let mut access_token = self.access_token.lock().await;
@@ -246,12 +249,12 @@ impl SpotifyClient {
         Ok(())
     }
 
-    async fn start_callback_server_with_timeout(&self) -> Result<String> {
-        timeout(Duration::from_secs(60), self.start_callback_server()).await?
+    async fn start_callback_server_with_timeout(&self, bind_addr: String ) -> Result<String> {
+        timeout(Duration::from_secs(60), self.start_callback_server(bind_addr)).await?
     }
 
-    async fn start_callback_server(&self) -> Result<String> {
-        let listener = AsyncTcpListener::bind("127.0.0.1:8888").await?;
+    async fn start_callback_server(&self, bind_addr: String) -> Result<String> {
+        let listener = AsyncTcpListener::bind(bind_addr.clone()).await?;
 
         loop {
             match listener.accept().await {
@@ -265,7 +268,7 @@ impl SpotifyClient {
                         Ok(n) => {
                             let request = String::from_utf8_lossy(&buffer[..n]);
 
-                            if let Some(code) = self.extract_code_from_request(&request) {
+                            if let Some(code) = self.extract_code_from_request(&request, bind_addr.clone()) {
                                 self.send_async_response(&mut stream).await?;
                                 return Ok(code);
                             }
@@ -278,7 +281,7 @@ impl SpotifyClient {
                                     Ok(n) => {
                                         let request = String::from_utf8_lossy(&buffer[..n]);
 
-                                        if let Some(code) = self.extract_code_from_request(&request)
+                                        if let Some(code) = self.extract_code_from_request(&request, bind_addr.clone())
                                         {
                                             self.send_async_response(&mut stream).await?;
                                             return Ok(code);
@@ -296,7 +299,7 @@ impl SpotifyClient {
         }
     }
 
-    fn extract_code_from_request(&self, request: &str) -> Option<String> {
+    fn extract_code_from_request(&self, request: &str, callback_host: String) -> Option<String> {
         // Look for both /callback and / endpoints
         let patterns = ["GET /callback?", "GET /?"];
 
@@ -305,7 +308,7 @@ impl SpotifyClient {
                 let query_part = &request[query_start + pattern.len()..];
                 if let Some(query_end) = query_part.find(' ') {
                     let query = &query_part[..query_end];
-                    let url = format!("http://127.0.0.1:8888/?{}", query);
+                    let url = format!("http://{}?{}", callback_host, query);
                     if let Ok(parsed_url) = Url::parse(&url) {
                         for (key, value) in parsed_url.query_pairs() {
                             if key == "code" {
